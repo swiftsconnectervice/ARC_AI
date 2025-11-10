@@ -219,17 +219,34 @@ export const generateCampaignTextContent = async (
 
 // (Tu función generateImage está bien con la corrección que hicimos)
 export const generateImage = async (prompt: string, productImage: ProductImage | null, styleBrief: StyleBrief | null): Promise<{ url: string }> => {
+    
     const styleInstruction = styleBrief ? ` Adhere to this style: Mood: ${styleBrief.mood}. Lighting: ${styleBrief.lighting}. Palette: ${styleBrief.palette}. Composition: ${styleBrief.composition}.` : '';
+    
     let fullPrompt: string;
     const parts: any[] = [];
+
     if (productImage) {
-        fullPrompt = `Take the product from the provided reference image and place it seamlessly into a new scene described by the following prompt: "${prompt}". ${styleInstruction}. It is crucial to preserve the product...`;
+        // Flow B: Product Anchoring
+        fullPrompt = `Take the product from the provided reference image and place it seamlessly into a new scene described by the following prompt: "${prompt}". ${styleInstruction}. It is crucial to preserve the product, including its logo and branding, exactly as it appears in the reference image. Do not add any new or additional text, logos, or graphics to the rest of the scene.`;
         parts.push({ text: fullPrompt });
-        parts.push(await createImagePart(productImage.base64)); // Usa el helper
+        
+        // --- 💡 LA CORRECCIÓN ESTÁ AQUÍ ---
+        // Revierte al método original y simple. No uses el helper "createImagePart".
+        // La imagen de producto (productImage) siempre es Base64 la primera vez.
+        parts.push({
+            inlineData: {
+                mimeType: productImage.mimeType,
+                data: productImage.base64
+            }
+        });
+        // --- FIN DE LA CORRECCIÓN ---
+
     } else {
-        fullPrompt = `Generate a high-quality, photorealistic image for a marketing campaign based on this prompt: "${prompt}". ${styleInstruction}. The image must be purely visual... IMPORTANT: Do NOT include any text...`;
+        // Flow A: Conceptual Creation
+        fullPrompt = `Generate a high-quality, photorealistic image for a marketing campaign based on this prompt: "${prompt}". ${styleInstruction}. The image must be purely visual and serve as a background for text that will be added later. IMPORTANT: Do NOT include any text, words, letters, or logos in the image.`;
         parts.push({ text: fullPrompt });
     }
+
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: { parts },
@@ -237,7 +254,9 @@ export const generateImage = async (prompt: string, productImage: ProductImage |
             responseModalities: [Modality.IMAGE],
         },
     });
+
     const imagePart = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+
     if (imagePart && imagePart.inlineData) {
         const { mimeType, data } = imagePart.inlineData;
         if (!mimeType.startsWith('image/')) {
@@ -245,6 +264,7 @@ export const generateImage = async (prompt: string, productImage: ProductImage |
         }
         return { url: `data:${mimeType};base64,${data}` };
     }
+
     throw new Error('Image generation failed to return an image.');
 };
 
